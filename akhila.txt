@@ -1,0 +1,143 @@
+ASSESSMENT :
+
+1.
+
+agent1.sources = source1
+agent1.sinks = sink1
+agent1.channels = channel1
+
+agent1.sources.source1.channels = channel1
+agent1.sinks.sink1.channel = channel1
+
+agent1.sources.source1.type = org.apache.flume.source.twitter.TwitterSource
+agent1.sources.source1.consumerKey = in7BBWEWweEbeZFyUfUayMByG
+agent1.sources.source1.consumerSecret = 1Zpe6xGytSoTiesNnA9o41R1OS5Zm63jqUSsbo1vTNLk02RTWu
+agent1.sources.source1.accessToken = 1493966882935762948-xFgkQuoeOvQ8FhBlJ9j7PcCRbEzjMl
+agent1.sources.source1.accessTokenSecret = YBI7NBQqTRUlYzNlO4umOfkwn1ZizqJobBf93j83LqxMb
+agent1.sources.source1.keywords = covid-19
+
+agent1.sinks.sink1.type = hdfs
+agent1.sinks.sink1.hdfs.path = /flume/twitter
+agent1.sinks.sink1.hdfs.filePrefix = events
+agent1.sinks.sink1.hdfs.fileSuffix = .log
+agent1.sinks.sink1.hdfs.inUsePreffix = _
+agent1.sinks.sink1.hdfs.fileType = DataStream
+
+agent1.channels.channel1.type = memory
+agent1.channels.channel1.capacity = 1000
+
+Terminal :
+flume-ng agent --conf-file /home/akhila/twitter-to-hdfs.properties --name agent1 -Dflume.root.logger=WARN,console
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+2.
+
+Terminal 1:
+
+akhila@akhila-VirtualBox:~/hadoop-2.7.3$ mysql -u root -p
+mysql>create database demo;
+mysql>use demo;
+mysql>create table details(name varchar(20),birth DATE,sex char)
+mysql>INSERT INTO details VALUES('Akhila','1999-09-01','F')
+
+Terminal 2:
+
+sqoop import --connect jdbc:mysql://localhost:3306/demo --username=root --password=1234 --table=details --hive-import --hive-table=details1 --target-dir /mysql/table/details1 --m 1
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+3.
+
+Terminal : 
+akhila@akhila-VirtualBox:~/hadoop-2.7.3$bin/hdfs dfs -mkdir /assessment
+akhila@akhila-VirtualBox:~/hadoop-2.7.3$bin/hdfs dfs -put /home/akhila/Desktop/flights.csv /assessment
+akhila@akhila-VirtualBox:~/hadoop-2.7.3$pyspark
+
+sc
+flightPath = "hdfs:///assessment/flights.csv"
+flightData = sc.textFile(flightPath)
+flightData.take(10)
+flightData.collect()
+flightData.count()
+flightData.first()
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+4.
+
+Terminal : 
+akhila@akhila-VirtualBox:~/hadoop-2.7.3$bin/hdfs dfs -mkdir /assessment
+akhila@akhila-VirtualBox:~/hadoop-2.7.3$bin/hdfs dfs -put /home/akhila/Desktop/twitter.json /assessment
+akhila@akhila-VirtualBox:~/hadoop-2.7.3$pyspark
+
+sc
+twitterPath = "hdfs:///assessment/twitter.json"
+import json
+twitterData = sc.textFile(twitterPath).map(lambda x:json.loads(x))
+twitterData.filter(lambda x:x['user']['screen_name']=='realDonaldTrump').map(lambda x:x['test']).take(3)
+from pyspark import SQLContext,Row
+sqlC = SQLContext(sc)
+twitterTable = sqlc.read.json(twitterPath)
+sqlC.sql("select text,user.screen_name from twitterTab where user.screen_name='realDonaldTrump' limit 10").collect()
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+5.
+
+from pyspark import SparkContext
+from pyspark.streaming import StreamingContext
+sc = SparkContext("local[2]","StreamingErrorCount")
+ssc = StreamingContext(sc,10)
+ssc.checkpoint("hdfs:///spark/streaming")
+ds1 = ssc.socketTextStream("localhost",9999)
+count = ds1.flatMap(lambda x:x.split(" ")).filter(lambda word:"ERROR" in word).map(lambda word:(word,1)).reduceByKey(lambda x,y:x+y)
+count.pprint()
+ssc.start()
+ssc.awaitTermination()
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+6.
+
+Terminal : 
+akhila@akhila-VirtualBox:~/hadoop-2.7.3$bin/hdfs dfs -mkdir /assessment
+akhila@akhila-VirtualBox:~/hadoop-2.7.3$bin/hdfs dfs -put /home/akhila/Desktop/flights.csv /assessment
+akhila@akhila-VirtualBox:~/hadoop-2.7.3$pyspark
+
+sc
+flightsPath = "hdfs:///assessment/flights.csv"
+flightsData = sc.textFile(flightsPath)
+blanks = flightsData.map(lambda x:','.join(x or '00.00' for x in x.split(',')))
+blanktime = blanks.map(lambda x:x.replace(',""',',"0000"'))
+finalF = blanktime
+from datetime import datetime
+from collections import namedtuple
+from pyspark.sql import Row
+fields = ('date','airline','flightnum','origin','dest','dep','dep_delay','arv','arv_delay','airtime','distance')
+Flight  = namedtuple('Flight',fields, verbose=False)
+DATE_FMT = '%Y-%m-%d'
+TIME_FMT = '%H%M%S'
+def parse(row):
+    row[0] = datetime.strptime(row[0], DATE_FMT).date()
+    row[5] = datetime.strptime(row[5], TIME_FMT).time()
+    row[6] = float(row[6])
+    row[7] = datetime.strptime(row[7], TIME_FMT).time()
+    row[8] = float(row[8])
+    row[9] = float(row[9])
+    row[10] = float(row[10])
+    return Flight(*row[:11])
+f = finalF.filter(notHeader).map(split)
+fp = f.map(parse)
+airportDelays = fp.map(lambda x: (x.origin,x.dep_delay))
+airportTotalDelay = airportDelays.reduceByKey(lambda x,y:x+y)
+airportsSumCount = airportTotalDelay.join(airportCount)
+airportAvgDelay=airportsSumCount.mapValues(lambda x:x[0]/float(x[1]))
+airportAvgDelay.take(3)
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+
+
